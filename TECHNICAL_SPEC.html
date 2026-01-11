@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technical Specification - Quality Gate</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
+    <style>
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+            background-color: #0d1117;
+        }
+        .markdown-body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3,
+        .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+            color: #c9d1d9;
+            border-bottom-color: #21262d;
+        }
+        .markdown-body a {
+            color: #58a6ff;
+        }
+        .markdown-body code {
+            background-color: rgba(110, 118, 129, 0.4);
+            color: #c9d1d9;
+        }
+        .markdown-body pre {
+            background-color: #161b22;
+        }
+        .markdown-body table tr {
+            background-color: #0d1117;
+            border-top-color: #21262d;
+        }
+        .markdown-body table tr:nth-child(2n) {
+            background-color: #161b22;
+        }
+        .markdown-body table th, .markdown-body table td {
+            border-color: #30363d;
+        }
+        .markdown-body blockquote {
+            border-left-color: #3b434b;
+            color: #8b949e;
+        }
+        .markdown-body hr {
+            background-color: #21262d;
+        }
+        @media (max-width: 767px) {
+            body { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <article class="markdown-body" id="content"></article>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+const markdown = `# Technical Specification - Quality Gate
+
+> **Version**: 2.0 | **Tarih**: Ocak 2026
+
+Bu dokuman, Quality Gate sisteminin teknik detaylarini aciklar.
+
+---
+
+## 1. Guvenlik Taramasi (Safety Scan)
+
+### Aranacak Pattern'ler
+
+| Pattern | Regex | Ciddiyet | Risk |
+|---------|-------|----------|------|
+| \`eval()\` | \`/\\beval\\s*\\(/g\` | CRITICAL | Kod enjeksiyonu |
+| \`Function()\` | \`/\\bnew\\s+Function\\s*\\(/g\` | CRITICAL | Dinamik kod |
+| \`innerHTML =\` | \`/\\.innerHTML\\s*=/g\` | HIGH | XSS |
+| \`outerHTML =\` | \`/\\.outerHTML\\s*=/g\` | HIGH | XSS |
+| \`document.write\` | \`/document\\.write\\s*\\(/g\` | HIGH | DOM bozulmasi |
+| \`debugger\` | \`/\\bdebugger\\b/g\` | MEDIUM | Debug kodu |
+| \`console.log\` | \`/console\\.(log|debug|info)\\s*\\(/g\` | MEDIUM | Debug kodu |
+| Hardcoded secret | Asagiya bak | HIGH | Guvenlik sizintisi |
+
+### Hardcoded Secret Tespiti
+
+\`\`\`javascript
+// Aranacak pattern'ler
+const SECRET_PATTERNS = [
+  /api[_-]?key\\s*[:=]\\s*['"][^'"]+['"]/i,
+  /secret[_-]?key\\s*[:=]\\s*['"][^'"]+['"]/i,
+  /password\\s*[:=]\\s*['"][^'"]+['"]/i,
+  /token\\s*[:=]\\s*['"][^'"]{20,}['"]/i,
+  /['"]sk-[a-zA-Z0-9]{32,}['"]/,  // OpenAI key
+  /['"]ghp_[a-zA-Z0-9]{36,}['"]/,  // GitHub token
+];
+\`\`\`
+
+### Yorum Ici Tespiti Engelleme
+
+\`\`\`javascript
+// Bu satirlar ATLANMALI:
+// eval() is dangerous  ← Yorum icinde
+/* innerHTML kullanma */ ← Yorum icinde
+
+// Bu satirlar TESPIT EDILMELI:
+eval(userInput);  ← Gercek kullanim
+element.innerHTML = data;  ← Gercek kullanim
+\`\`\`
+
+### Yorum Temizleme Algoritmasi
+
+\`\`\`typescript
+function stripComments(content: string): string {
+  // Tek satir yorumlari kaldir
+  let result = content.replace(/\\/\\/.*$/gm, '');
+
+  // Cok satirli yorumlari kaldir
+  result = result.replace(/\\/\\*[\\s\\S]*?\\*\\//g, '');
+
+  return result;
+}
+
+// Tarama oncesi yorum temizle
+const cleanContent = stripComments(fileContent);
+const issues = scanForPatterns(cleanContent);
+\`\`\`
+
+---
+
+## 2. Calisma Testi (Runtime Test)
+
+### Playwright Kullanimi
+
+\`\`\`typescript
+import { chromium } from 'playwright';
+
+async function runtimeTest(gamePath: string): Promise<RuntimeResult> {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+
+  const errors: string[] = [];
+  const exceptions: string[] = [];
+
+  // Console error'lari yakala
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      errors.push(msg.text());
+    }
+  });
+
+  // Uncaught exception'lari yakala
+  page.on('pageerror', (err) => {
+    exceptions.push(err.message);
+  });
+
+  // Sayfaya git
+  const indexPath = path.join(gamePath, 'index.html');
+  await page.goto(\`file://\${indexPath}\`);
+
+  // Canvas kontrolu
+  const canvasInfo = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return null;
+    return {
+      width: canvas.width,
+      height: canvas.height
+    };
+  });
+
+  await browser.close();
+
+  return {
+    passed: errors.length === 0 && exceptions.length === 0,
+    consoleErrors: errors,
+    uncaughtExceptions: exceptions,
+    canvasFound: canvasInfo !== null,
+    canvasDimensions: canvasInfo
+  };
+}
+\`\`\`
+
+### Bekleme Stratejisi
+
+\`\`\`typescript
+// Oyunun yuklenmesini bekle
+await page.waitForSelector('canvas', { timeout: 10000 });
+
+// Ek bekleme (animasyon/init icin) - 3 saniye onerilir
+await page.waitForTimeout(3000);
+\`\`\`
+
+> **Not**: 3 saniyelik bekleme, Phaser oyunlarinin tam olarak baslatilmasi icin yeterli sure saglar. Daha kisa sureler false-positive hatalara neden olabilir.
+
+### Screenshot on Failure (Bonus)
+
+\`\`\`typescript
+if (!result.passed) {
+  const screenshotPath = path.join(outputDir, 'failure-screenshot.png');
+  await page.screenshot({
+    path: screenshotPath,
+    fullPage: true
+  });
+  result.screenshotPath = screenshotPath;
+}
+\`\`\`
+
+---
+
+## 3. Determinizm Kontrolu
+
+### Statik Analiz
+
+\`\`\`typescript
+// Math.random() kullanimlarini say
+const randomCalls = content.match(/Math\\.random\\s*\\(\\s*\\)/g) || [];
+
+// Seeding kutuphanelerini tespit et
+const seedLibraries = [
+  'seedrandom',
+  'chance',
+  'mersenne-twister',
+  'random-seed'
+];
+
+const hasSeeding = seedLibraries.some(lib =>
+  content.includes(lib) || content.includes('__GAME_SEED')
+);
+\`\`\`
+
+### Runtime Dogrulama
+
+\`\`\`typescript
+// Math.random'i proxy'le
+await page.addInitScript(() => {
+  window.__randomCalls = [];
+  const original = Math.random;
+  Math.random = function() {
+    const value = original.call(Math);
+    window.__randomCalls.push(value);
+    return value;
+  };
+});
+
+// Iki calistirma karsilastir
+const run1 = await getRandomCalls(page);
+const run2 = await getRandomCalls(page);
+
+const isReproducible = JSON.stringify(run1) === JSON.stringify(run2);
+\`\`\`
+
+### Determinizm Skoru
+
+\`\`\`typescript
+interface DeterminismScore {
+  score: number;           // 0-100
+  randomCallCount: number;
+  hasSeeding: boolean;
+  isReproducible: boolean;
+}
+
+function calculateDeterminismScore(result: DeterminismResult): number {
+  let score = 100;
+
+  if (!result.seedingMechanismFound && result.randomCallsDetected > 0) {
+    score -= 50; // Seeding yok ama random kullaniliyor
+  }
+
+  if (!result.isReproducible) {
+    score -= 30; // Tekrarlanabilir degil
+  }
+
+  if (result.randomCallsDetected > 10) {
+    score -= 10; // Cok fazla random cagrisi
+  }
+
+  return Math.max(0, score);
+}
+\`\`\`
+
+---
+
+## 4. Otomatik Duzeltme (Fixers)
+
+### Debug Remover
+
+\`\`\`typescript
+// Kaldirilacak pattern'ler
+const DEBUG_PATTERNS = [
+  /^\\s*console\\.(log|debug|info)\\s*\\([^)]*\\)\\s*;?\\s*$/gm,
+  /^\\s*debugger\\s*;?\\s*$/gm
+];
+
+function removeDebug(content: string): string {
+  let result = content;
+  for (const pattern of DEBUG_PATTERNS) {
+    result = result.replace(pattern, '');
+  }
+  // Bos satirlari temizle
+  result = result.replace(/\\n\\s*\\n\\s*\\n/g, '\\n\\n');
+  return result;
+}
+\`\`\`
+
+### innerHTML Sanitizer
+
+\`\`\`typescript
+// innerHTML → textContent donusumu
+function sanitizeInnerHtml(content: string): string {
+  // Basit string atama - degistirme
+  // element.innerHTML = "static"; → Oldugu gibi birak (statik string)
+
+  // Degisken atama - textContent'e cevir
+  // element.innerHTML = variable; → textContent'e cevir
+  return content.replace(
+    /(\\w+)\\.innerHTML\\s*=\\s*(\\w+)\\s*;/g,
+    '/* SECURITY FIX */ $1.textContent = $2;'
+  );
+}
+\`\`\`
+
+### Random Seeder
+
+\`\`\`typescript
+// Enjekte edilecek PRNG kodu
+const SEED_INJECTION = \`
+(function() {
+  function mulberry32(seed) {
+    return function() {
+      seed |= 0;
+      seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  var urlSeed = new URLSearchParams(location.search).get('seed');
+  var seed = urlSeed ? hashCode(urlSeed) : 12345;
+
+  function hashCode(str) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash) || 1;
+  }
+
+  Math.random = mulberry32(seed);
+  window.__GAME_SEED = seed;
+  console.log('[QualityGate] Seed injected:', seed);
+})();
+\`;
+\`\`\`
+
+### Enjeksiyon Stratejisi
+
+\`\`\`typescript
+function injectSeed(htmlContent: string): string {
+  const scriptTag = \`<script>\${SEED_INJECTION}</script>\`;
+
+  // <head> icine veya <body> basina ekle
+  if (htmlContent.includes('<head>')) {
+    return htmlContent.replace('<head>', \`<head>\\n\${scriptTag}\`);
+  } else if (htmlContent.includes('<body>')) {
+    return htmlContent.replace('<body>', \`<body>\\n\${scriptTag}\`);
+  } else {
+    return scriptTag + '\\n' + htmlContent;
+  }
+}
+\`\`\`
+
+---
+
+## 5. CLI Arayuzu
+
+### Komut Yapisi
+
+\`\`\`bash
+quality-gate <game-path> [options]
+
+Options:
+  -f, --fix              Apply automatic fixes
+  -j, --json             Output as JSON
+  -s, --skip <checks>    Skip checks (comma-separated)
+  -t, --timeout <ms>     Runtime test timeout (default: 30000)
+  -v, --verbose          Verbose output
+  --no-screenshot        Disable failure screenshots
+  -h, --help             Show help
+\`\`\`
+
+### Exit Codes
+
+| Code | Anlam |
+|------|-------|
+| 0 | Tum kontroller gecti |
+| 1 | En az bir kontrol basarisiz |
+| 2 | Sistem hatasi (dosya bulunamadi, vb.) |
+
+### Ornek Kullanimlar
+
+\`\`\`bash
+# Temel tarama
+quality-gate ./my-game
+
+# Duzeltme ile
+quality-gate ./my-game --fix
+
+# JSON cikti
+quality-gate ./my-game --json > report.json
+
+# Belirli kontrolleri atla
+quality-gate ./my-game --skip runtime,determinism
+
+# Verbose mod
+quality-gate ./my-game -v --fix
+\`\`\`
+
+---
+
+## 6. Cikti Formatlari
+
+### JSON Format
+
+\`\`\`json
+{
+  "passed": false,
+  "iterations": 1,
+  "totalTimeMs": 1234,
+  "checks": {
+    "safety": {
+      "passed": false,
+      "issues": [
+        {
+          "file": "src/main.js",
+          "line": 42,
+          "column": 5,
+          "pattern": "eval()",
+          "severity": "CRITICAL",
+          "snippet": "eval(userInput)"
+        }
+      ]
+    },
+    "runtime": {
+      "passed": true,
+      "loadTimeMs": 500,
+      "consoleErrors": [],
+      "canvasFound": true
+    },
+    "determinism": {
+      "passed": false,
+      "randomCallsDetected": 15,
+      "seedingMechanismFound": false
+    }
+  },
+  "fixes": [
+    {
+      "file": "src/main.js",
+      "fixer": "DebugRemover",
+      "applied": true,
+      "linesRemoved": 5
+    }
+  ]
+}
+\`\`\`
+
+### Human-Readable Format
+
+\`\`\`
+════════════════════════════════════════════════════════════
+                    QUALITY GATE REPORT
+════════════════════════════════════════════════════════════
+
+Game: ./my-game
+Time: 1234ms
+Iterations: 2
+
+────────────────────────────────────────────────────────────
+                     SAFETY SCAN
+────────────────────────────────────────────────────────────
+
+❌ CRITICAL: eval() detected
+   src/main.js:42:5
+   eval(userInput)
+
+⚠️ HIGH: innerHTML assignment
+   src/ui.js:15:3
+   element.innerHTML = data
+
+────────────────────────────────────────────────────────────
+                     RUNTIME TEST
+────────────────────────────────────────────────────────────
+
+✅ Page loaded successfully (500ms)
+✅ Canvas found (800x600)
+✅ No console errors
+✅ No uncaught exceptions
+
+────────────────────────────────────────────────────────────
+                   DETERMINISM CHECK
+────────────────────────────────────────────────────────────
+
+❌ Math.random() calls: 15
+❌ Seeding mechanism: NOT FOUND
+⚠️ Game is NOT reproducible
+
+────────────────────────────────────────────────────────────
+                       FIXES APPLIED
+────────────────────────────────────────────────────────────
+
+✅ DebugRemover: Removed 5 console.log statements
+✅ RandomSeeder: Injected PRNG with URL seed support
+
+════════════════════════════════════════════════════════════
+                    RESULT: ❌ FAILED
+════════════════════════════════════════════════════════════
+\`\`\`
+
+---
+
+## 7. Tip Tanimlari
+
+\`\`\`typescript
+// Severity levels
+type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM';
+
+// Scan result
+interface ScanResult {
+  file: string;
+  line: number;
+  column: number;
+  pattern: string;
+  severity: Severity;
+  snippet: string;
+}
+
+// Runtime result
+interface RuntimeResult {
+  passed: boolean;
+  loadTimeMs: number;
+  consoleErrors: string[];
+  uncaughtExceptions: string[];
+  canvasFound: boolean;
+  canvasDimensions: { width: number; height: number } | null;
+  screenshotPath?: string;  // Bonus
+}
+
+// Determinism result
+interface DeterminismResult {
+  randomCallsDetected: number;
+  seedingMechanismFound: boolean;
+  seedingLibrary?: string;
+  isReproducible: boolean;
+}
+
+// Fix result
+interface FixResult {
+  file: string;
+  fixer: string;
+  applied: boolean;
+  changes?: string;
+  linesRemoved?: number;
+  linesAdded?: number;
+}
+
+// Main result
+interface QualityGateResult {
+  passed: boolean;
+  iterations: number;
+  totalTimeMs: number;
+  checks: {
+    safety: { passed: boolean; issues: ScanResult[] };
+    runtime: RuntimeResult;
+    determinism: DeterminismResult;
+  };
+  fixes: FixResult[];
+}
+
+// CLI Options
+interface CLIOptions {
+  fix: boolean;
+  json: boolean;
+  skip: string[];
+  timeout: number;
+  verbose: boolean;
+  screenshot: boolean;
+}
+\`\`\`
+
+---
+
+## 8. Edge Cases
+
+### Dikkat Edilmesi Gerekenler
+
+1. **Minified kod**: Satir numaralari anlamsiz olabilir
+2. **Source maps**: Varsa kullan
+3. **Cok satirli string**: \`console.log(\\...\\)\` duzgun handle et
+4. **Async error**: Promise rejection'lari yakala
+5. **Iframe ici oyun**: Ana sayfa disindaki canvas'lari kontrol et
+6. **Dynamic import**: Lazy loaded modulleri de tara
+7. **Node modules**: \`node_modules/\` klasorunu tara**ma**
+
+### Hata Toleransi
+
+\`\`\`typescript
+// Tek dosya hatasi tum islemi durdurdurdurdurdurmamali
+try {
+  await scanFile(file);
+} catch (error) {
+  results.push({
+    file,
+    error: error.message,
+    skipped: true
+  });
+}
+\`\`\`
+
+### Dosya Filtreleme
+
+\`\`\`typescript
+const SCAN_EXTENSIONS = ['.js', '.ts', '.mjs', '.jsx', '.tsx'];
+const IGNORE_PATTERNS = [
+  'node_modules/**',
+  'dist/**',
+  'build/**',
+  '*.min.js',
+  '*.bundle.js'
+];
+
+function shouldScan(filePath: string): boolean {
+  const ext = path.extname(filePath);
+  if (!SCAN_EXTENSIONS.includes(ext)) return false;
+
+  return !IGNORE_PATTERNS.some(pattern =>
+    minimatch(filePath, pattern)
+  );
+}
+\`\`\`
+
+---
+
+## 9. Test Stratejisi
+
+### Unit Test Ornekleri
+
+\`\`\`typescript
+describe('SafetyScan', () => {
+  it('should detect eval()', () => {
+    const content = 'eval(userInput);';
+    const result = safetyScan(content);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].pattern).toBe('eval()');
+    expect(result.issues[0].severity).toBe('CRITICAL');
+  });
+
+  it('should ignore eval in comments', () => {
+    const content = '// eval() is dangerous';
+    const result = safetyScan(content);
+    expect(result.issues).toHaveLength(0);
+  });
+});
+
+describe('DebugRemover', () => {
+  it('should remove console.log', () => {
+    const content = 'console.log("test");\\nconst x = 1;';
+    const result = removeDebug(content);
+    expect(result).not.toContain('console.log');
+    expect(result).toContain('const x = 1');
+  });
+});
+\`\`\`
+
+### Integration Test
+
+\`\`\`typescript
+describe('QualityGate Integration', () => {
+  it('should pass clean-game', async () => {
+    const result = await qualityGate('./test-games/clean-game');
+    expect(result.passed).toBe(true);
+  });
+
+  it('should fail debug-game without fix', async () => {
+    const result = await qualityGate('./test-games/debug-game');
+    expect(result.passed).toBe(false);
+  });
+
+  it('should pass debug-game with fix', async () => {
+    const result = await qualityGate('./test-games/debug-game', { fix: true });
+    expect(result.passed).toBe(true);
+  });
+});
+\`\`\`
+
+---
+
+## 10. Performans Onerileri
+
+| Alan | Oneri |
+|------|-------|
+| Dosya Okuma | Paralel \`Promise.all()\` kullan |
+| Regex | Compile edilmis regex'leri cache'le |
+| Playwright | Browser instance'i reuse et |
+| Buyuk Dosyalar | Stream okuma kullan |
+
+\`\`\`typescript
+// Paralel dosya tarama
+const files = await glob('**/*.js');
+const results = await Promise.all(
+  files.map(file => scanFile(file))
+);
+
+// Browser reuse
+let browser: Browser | null = null;
+
+async function getBrowser(): Promise<Browser> {
+  if (!browser) {
+    browser = await chromium.launch({ headless: true });
+  }
+  return browser;
+}
+\`\`\`
+
+---
+
+**Version History**:
+- v2.0 (Ocak 2026): Bekleme stratejisi guncellendi, test stratejisi eklendi
+- v1.0 (Ilk surum): Ilk teknik spesifikasyon
+`;
+
+document.getElementById('content').innerHTML = marked.parse(markdown);
+    </script>
+</body>
+</html>

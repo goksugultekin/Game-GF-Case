@@ -1,0 +1,19 @@
+{
+  "_version": "1.0",
+  "_createdAt": "2026-01-11T18:05:55.508Z",
+  "candidate": {
+    "id": "e8c1e965-0b94-41a2-a10b-26177de9b09a",
+    "machineId": "a5d40f06a53fdb39",
+    "timezone": "Europe/Istanbul"
+  },
+  "timeline": {
+    "repoCloned": "2026-01-11T18:05:55.508Z",
+    "firstActivity": null,
+    "lastActivity": null,
+    "submitted": "2026-01-11T18:42:37.838Z"
+  },
+  "sessions": [],
+  "commits": [],
+  "filesModified": [],
+  "_checksum": "568bb9b007781fdd"
+}

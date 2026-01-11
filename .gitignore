@@ -1,0 +1,14 @@
+
+# Tracker files (do not ignore - needed for submission)
+# .tracker-session.json
+# tracker-report.json
+
+# Node modules
+node_modules/
+
+# Build output
+dist/
+
+# IDE
+.idea/
+.vscode/

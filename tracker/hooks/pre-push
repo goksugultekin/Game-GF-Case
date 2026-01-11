@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# PRE-PUSH HOOK
+# =============
+# Bu hook push oncesi calisir.
+# Teslim olarak isaretler ve rapor olusturur.
+#
+
+# Tracker dizinine git
+SCRIPT_DIR="$(dirname "$0")"
+TRACKER_DIR="$SCRIPT_DIR/../../tracker"
+
+# Node.js ile calistir
+if command -v node &> /dev/null; then
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║              GENERATING SUBMISSION REPORT                      ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Teslim olarak isaretle ve rapor olustur
+    node "$TRACKER_DIR/index.js" submit
+
+    echo ""
+    echo "[Tracker] Report generated. Please include tracker-report.json in your push."
+    echo ""
+fi
+
+# Push'a izin ver
+exit 0

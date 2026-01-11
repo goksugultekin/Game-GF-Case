@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# PRE-COMMIT HOOK
+# ===============
+# Bu hook her commit oncesi calisir.
+# Commit zamanini ve bilgisini kaydeder.
+#
+
+# Tracker dizinine git
+SCRIPT_DIR="$(dirname "$0")"
+TRACKER_DIR="$SCRIPT_DIR/../../tracker"
+
+# Node.js ile calistir
+if command -v node &> /dev/null; then
+    # Commit mesajini al (staged dosyalardan)
+    COMMIT_MSG="pre-commit"
+
+    # Aktivite kaydet
+    node "$TRACKER_DIR/index.js" record "commit_$(date +%Y%m%d_%H%M%S)"
+fi
+
+# Commit'e izin ver
+exit 0

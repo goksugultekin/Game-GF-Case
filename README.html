@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quality Gate - Case Study</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
+    <style>
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+            background-color: #0d1117;
+        }
+        .markdown-body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3,
+        .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+            color: #c9d1d9;
+            border-bottom-color: #21262d;
+        }
+        .markdown-body a {
+            color: #58a6ff;
+        }
+        .markdown-body code {
+            background-color: rgba(110, 118, 129, 0.4);
+            color: #c9d1d9;
+        }
+        .markdown-body pre {
+            background-color: #161b22;
+        }
+        .markdown-body table tr {
+            background-color: #0d1117;
+            border-top-color: #21262d;
+        }
+        .markdown-body table tr:nth-child(2n) {
+            background-color: #161b22;
+        }
+        .markdown-body table th, .markdown-body table td {
+            border-color: #30363d;
+        }
+        .markdown-body blockquote {
+            border-left-color: #3b434b;
+            color: #8b949e;
+        }
+        .markdown-body hr {
+            background-color: #21262d;
+        }
+        @media (max-width: 767px) {
+            body { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <article class="markdown-body" id="content"></article>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+const markdown = `# Quality Gate - Case Study
+
+> **Version**: 2.0 | **Tarih**: Ocak 2026
+
+## Genel Bakis
+
+Bu case study, bir **Phaser oyun kalite kontrol sistemi** gelistirmenizi istemektedir. Sistem, otomatik olarak guvenlik aciklarini, debug ifadelerini ve determinizm sorunlarini tespit edip duzeltebilmelidir.
+
+## Amac
+
+Phaser ile yazilmis HTML5 oyunlari icin bir "Quality Gate" araci gelistirin:
+
+1. **Guvenlik Taramasi** - Tehlikeli kod pattern'lerini tespit
+2. **Calisma Testi** - Oyunu headless browser'da test et
+3. **Determinizm Kontrolu** - Tekrarlanabilirlik analizi
+4. **Otomatik Duzeltme** - Tespit edilen sorunlari duzelt
+
+## Klasor Yapisi
+
+\`\`\`
+case-study/
+├── README.md              # Bu dosya
+├── TECHNICAL_SPEC.md      # Teknik detaylar
+├── package.json           # Proje bagimliliklari
+├── .gitignore             # Git ignore kurallari
+├── tracker/               # Calisma suresi takip sistemi
+├── test-games/            # Test oyunlari
+│   ├── clean-game/        # ✅ Tum testlerden gecer
+│   ├── debug-game/        # ❌ console.log'lar var
+│   ├── unsafe-game/       # ❌ eval(), innerHTML var
+│   ├── random-game/       # ❌ Seed yok
+│   └── broken-game/       # ❌ Runtime error var
+└── solution/              # COZUMUNUZU BURAYA YAZIN
+\`\`\`
+
+## Gereksinimler
+
+### Zorunlu (Must Have)
+
+| Ozellik | Aciklama |
+|---------|----------|
+| Safety Scan | \`eval()\`, \`innerHTML\`, \`debugger\`, hardcoded secrets tespiti |
+| Runtime Test | Playwright ile oyunu calistir, error/exception yakala |
+| Determinism Check | \`Math.random()\` analizi, seed mekanizmasi kontrolu |
+| Auto-Fix | \`console.log\` kaldirma, \`innerHTML\` → \`textContent\` |
+| CLI | \`npx quality-gate ./game --fix\` seklinde kullanim |
+| Raporlama | JSON ve human-readable cikti |
+
+### Istege Bagli (Nice to Have)
+
+- Screenshot on failure
+- Watch mode
+- Custom rule tanimlama
+- IDE entegrasyonu
+- Paralel dosya tarama
+
+## Baslangic
+
+### 1. Kurulum
+
+\`\`\`bash
+# Bagimliliklari yukle (tracker otomatik kurulur)
+npm install
+
+# Git repo olustur (tracker icin gerekli)
+git init
+git add .
+git commit -m "Initial commit"
+\`\`\`
+
+### 2. Cozumunuzu Yazin
+
+\`solution/\` klasoru icinde calisin:
+
+\`\`\`bash
+cd solution
+# Kendi quality-gate projenizi olusturun
+\`\`\`
+
+### 3. Test Edin
+
+\`\`\`bash
+# Test oyunlarinda deneyin
+npx quality-gate ../test-games/clean-game
+npx quality-gate ../test-games/debug-game --fix
+\`\`\`
+
+## Test Oyunlari
+
+Sisteminizi test etmek icin hazir oyunlar saglanmistir:
+
+| Oyun | Durum | Beklenen Davranis |
+|------|-------|-------------------|
+| \`clean-game/\` | ✅ Temiz | Tum testlerden gecer |
+| \`debug-game/\` | ⚠️ Debug | console.log var → \`--fix\` ile duzelir |
+| \`unsafe-game/\` | ❌ Guvensiz | eval(), innerHTML var → Kismen duzelir |
+| \`random-game/\` | ⚠️ Rastgele | Seed yok → \`--fix\` ile seed enjekte |
+| \`broken-game/\` | ❌ Bozuk | Runtime error → Duzeltilemez |
+
+### Test Senaryolari
+
+\`\`\`bash
+# 1. Temiz oyun - Gecmeli
+npx quality-gate ./test-games/clean-game
+# Beklenen: ✅ PASSED
+
+# 2. Debug ifadeli oyun
+npx quality-gate ./test-games/debug-game
+# Beklenen: ❌ FAILED (console.log tespit)
+
+npx quality-gate ./test-games/debug-game --fix
+# Beklenen: ✅ PASSED (console.log kaldirildi)
+
+# 3. Guvenlik acikli oyun
+npx quality-gate ./test-games/unsafe-game
+# Beklenen: ❌ FAILED (CRITICAL: eval, HIGH: innerHTML)
+
+# 4. Deterministik olmayan oyun
+npx quality-gate ./test-games/random-game --fix
+# Beklenen: ✅ PASSED (Seed enjekte edildi)
+
+# 5. Bozuk oyun
+npx quality-gate ./test-games/broken-game
+# Beklenen: ❌ FAILED (Runtime error)
+\`\`\`
+
+## Onerilen Mimari
+
+\`\`\`
+solution/
+├── src/
+│   ├── index.ts           # Ana entry point
+│   ├── quality-gate.ts    # Orkestrator
+│   ├── cli.ts             # CLI arayuzu
+│   ├── types.ts           # Tip tanimlari
+│   │
+│   ├── checks/            # Kontrol modulleri
+│   │   ├── safety-scan.ts     # Statik analiz
+│   │   ├── runtime-test.ts    # Playwright test
+│   │   └── determinism.ts     # Determinizm kontrolu
+│   │
+│   └── fixers/            # Duzeltici moduller
+│       ├── debug-remover.ts       # console.log kaldirma
+│       ├── innerhtml-sanitizer.ts # XSS duzeltme
+│       └── random-seeder.ts       # Seed enjeksiyonu
+│
+├── package.json
+├── tsconfig.json
+└── README.md              # Kurulum talimatlari
+\`\`\`
+
+## Degerlendirme Kriterleri
+
+| Kriter | Agirlik | Aciklama |
+|--------|---------|----------|
+| **Dogruluk** | 30% | Test oyunlarinda dogru sonuc |
+| **Kod Kalitesi** | 25% | TypeScript best practices, clean code |
+| **Mimari** | 20% | Modulerlik, genisletilebilirlik |
+| **Dokumantasyon** | 10% | README, kod yorumlari |
+| **Calisma Suresi** | 10% | Verimli zaman kullanimi (hedef: 4-6 saat) |
+| **Bonus Ozellikler** | 5% | Nice to have ozellikler |
+
+## Teknik Gereksinimler
+
+- **Dil**: TypeScript (strict mode)
+- **Runtime**: Node.js 18+
+- **Browser Automation**: Playwright
+- **CLI Framework**: Tercihe bagli (Commander.js, yargs, vb.)
+- **Test Framework**: Vitest veya Jest
+
+## Sure
+
+| Sure | Aciklama |
+|------|----------|
+| **Hedef sure** | 4-6 saat aktif calisma |
+| **Maksimum sure** | 48 saat (teslim icin) |
+
+> **Not**: Calisma sureniz otomatik olarak takip edilmektedir.
+
+## Calisma Suresi Takibi
+
+Bu proje, calisma surenizi **otomatik olarak** takip eder.
+
+### Nasil Calisir?
+
+\`\`\`
+┌─────────────────────────────────────────────────────────────┐
+│  npm install → Tracker Kurulur                              │
+│       ↓                                                     │
+│  Dosya degisikligi → Otomatik kayit                         │
+│       ↓                                                     │
+│  Git commit → Commit kaydedilir                             │
+│       ↓                                                     │
+│  git push → Rapor otomatik olusur                           │
+└─────────────────────────────────────────────────────────────┘
+\`\`\`
+
+1. **\`npm install\`** yaptiginizda tracker otomatik kurulur
+2. Dosya degisiklikleriniz ve git commit'leriniz kaydedilir
+3. **15 dakika inaktivite** = yeni oturum baslangici
+4. **Push yaptiginizda** otomatik rapor olusturulur
+
+### Tracker Komutlari
+
+\`\`\`bash
+# Anlik istatistiklerinizi gorun
+npm run stats
+
+# Detayli rapor olustur
+npm run report
+
+# Teslim icin hazirla
+npm run submit
+\`\`\`
+
+### Ornek Cikti
+
+\`\`\`
+Quick Stats
+──────────────
+   Active Time: 3h 45m
+   Sessions:    2
+   Commits:     8
+   Files:       12
+\`\`\`
+
+### Seffaflik Politikasi
+
+| Ne Kaydedilir | Ne Kaydedilmez |
+|---------------|----------------|
+| ✅ Calisma sureleri | ❌ Kod icerigi |
+| ✅ Dosya adlari | ❌ Kisisel bilgiler |
+| ✅ Commit sayilari | ❌ Ekran goruntusu |
+| ✅ Oturum bilgileri | ❌ Tus vuruslari |
+
+> \`tracker-report.json\` dosyasini istediginiz zaman inceleyebilirsiniz.
+
+## Teslim
+
+### Teslim Edilecekler
+
+1. **GitHub Reposu** (public veya private + invite)
+2. **README.md** ile kurulum talimatlari
+3. **Calisan demo** (test oyunlarinda)
+4. **tracker-report.json** (otomatik olusur)
+
+### Teslim Kontrol Listesi
+
+\`\`\`bash
+# Teslim oncesi kontrol
+npm run submit
+
+# Bu komut:
+# ✅ Tum testleri calistirir
+# ✅ Rapor olusturur
+# ✅ Eksikleri gosterir
+\`\`\`
+
+### Teslim Formati
+
+\`\`\`bash
+# GitHub uzerinden
+git push origin main
+
+# veya ZIP olarak
+# solution/ klasorunu + tracker-report.json'i gonderin
+\`\`\`
+
+## Ipuclari
+
+1. **Once basit basla**: Ilk olarak bir check'i tam calistir
+2. **TDD kullan**: Test oyunlarini baz al
+3. **Moduler yaz**: Her check/fixer bagimsiz olsun
+4. **Error handling**: Edge case'leri dusun
+5. **Commit sik**: Ilerlemenizi kaydedin
+
+## Sorular
+
+Case study hakkinda sorulariniz varsa:
+- Teknik detaylar icin **TECHNICAL_SPEC.md** dosyasina bakin
+- Genel sorular icin iletisime gecin
+
+---
+
+**Iyi calismalar!**
+`;
+
+document.getElementById('content').innerHTML = marked.parse(markdown);
+    </script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+
+
+{
+  "name": "ggf3-case-study",
+  "version": "1.0.0",
+  "description": "GGF3 Quality Gate Case Study - Senior Developer Position",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "postinstall": "node tracker/setup.js",
+
+    "track": "node tracker/index.js start",
+    "track:stop": "node tracker/index.js stop",
+    "stats": "node tracker/index.js stats",
+    "report": "node tracker/index.js report",
+    "submit": "node tracker/index.js submit",
+    "setup": "node tracker/setup.js",
+    "setup:force": "node tracker/setup.js --force",
+
+    "typecheck": "npx tsc -p tsconfig.json --noEmit",
+    "build": "npx tsc -p tsconfig.build.json",
+    "check": "node dist/index.js",
+    "dev": "npx ts-node src/index.ts"
+  },
+  "keywords": [
+    "case-study",
+    "quality-gate",
+    "phaser",
+    "game-testing"
+  ],
+  "author": "GGF3 Team",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.6",
+    "playwright": "^1.57.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
